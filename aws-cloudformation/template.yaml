@@ -1,0 +1,485 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: "Cloudfront Real-Time Log Processor"
+
+Parameters:
+  ParamS3BucketName:
+    Type: String
+    Default: is-cf-rtl-logs
+    Description: S3 bucket name.
+
+  ParamGlueDatabaseName:
+    Type: String
+    Default: cfrtl
+    Description: Glue database name.
+
+  ParamGlueTableName:
+    Type: String
+    Default: rtl
+    Description: Glue table name.
+
+  ParamRealtimeLogConfigName:
+    Type: String
+    Default: default-rtl-orc
+    Description: Cloudfront realtime log config name.
+
+  ParamCrawlerName:
+    Type: String
+    Default: cf-rtl-log-crawler
+    Description: Glue crawler name.
+
+Globals:
+  Function:
+    Timeout: 90
+
+Resources:
+  CloudfrontRealtimeLogConfig:
+    Type: AWS::CloudFront::RealtimeLogConfig
+    Properties:
+      EndPoints:
+        - KinesisStreamConfig:
+            RoleArn: !GetAtt RoleCFRTLCloudfront.Arn
+            StreamArn: !GetAtt KinesisStreamCFRTL.Arn
+          StreamType: Kinesis
+      Fields:
+        - timestamp
+        - c-ip
+        - sc-status
+        - sc-bytes
+        - cs-method
+        - cs-protocol
+        - cs-host
+        - cs-uri-stem
+        - x-edge-location
+        - x-edge-request-id
+        - x-host-header
+        - time-taken
+        - cs-protocol-version
+        - c-ip-version
+        - cs-user-agent
+        - cs-referer
+        - cs-cookie
+        - cs-uri-query
+        - x-edge-response-result-type
+        - ssl-protocol
+        - ssl-cipher
+        - x-edge-result-type
+        - sc-content-type
+        - sc-content-len
+        - x-edge-detailed-result-type
+        - c-country
+        - cache-behavior-path-pattern
+      Name: !Ref ParamRealtimeLogConfigName
+      SamplingRate: 100
+
+  FunctionCFTRLKinesisProcessor:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Process and convert Kinesis data
+      CodeUri: ../bin/cf-rtl-kinesis/bootstrap.zip
+      Handler: bootstrap
+      Runtime: provided.al2
+      Architectures: [arm64]
+      Role: !GetAtt RoleCFRTLLambaExec.Arn
+
+  GlueCrawlerCFRTL:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Configuration: '{"Version":1.0,"Grouping":{"TableGroupingPolicy":"CombineCompatibleSchemas"}}'
+      Description: Crawler for Cloudwatch rt-logs
+      Name: !Ref ParamCrawlerName
+      RecrawlPolicy:
+        RecrawlBehavior: CRAWL_EVERYTHING
+      Role: !GetAtt RoleCFRTLGlueCrawler.Arn
+      SchemaChangePolicy:
+        DeleteBehavior: LOG
+        UpdateBehavior: UPDATE_IN_DATABASE
+      Targets:
+        CatalogTargets:
+          - DatabaseName: !Ref GlueDatabaseCFRTL
+            Tables:
+              - !Ref GlueTableCFRTL
+
+  GlueDatabaseCFRTL:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Description: "Cloudfront log database"
+        Name: !Ref ParamGlueDatabaseName
+
+  GlueTableCFRTL:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref GlueDatabaseCFRTL
+      TableInput:
+        Name: !Ref ParamGlueTableName
+        Description: "Real-Time Log Table"
+        TableType: EXTERNAL_TABLE
+        PartitionKeys:
+          - Name: year
+            Type: string
+          - Name: month
+            Type: string
+          - Name: day
+            Type: string
+        StorageDescriptor:
+          Columns:
+            - Name: timestamp
+              Type: string
+            - Name: client_ip
+              Type: string
+            - Name: status
+              Type: int
+            - Name: bytes
+              Type: int
+            - Name: method
+              Type: string
+            - Name: protocol
+              Type: string
+            - Name: host
+              Type: string
+            - Name: uri_stem
+              Type: string
+            - Name: edge_location
+              Type: string
+            - Name: edge_request_id
+              Type: string
+            - Name: host_header
+              Type: string
+            - Name: time_taken
+              Type: double
+            - Name: proto_version
+              Type: string
+            - Name: ip_version
+              Type: string
+            - Name: user_agent
+              Type: string
+            - Name: referer
+              Type: string
+            - Name: cookie
+              Type: string
+            - Name: uri_query
+              Type: string
+            - Name: edge_response_result_type
+              Type: string
+            - Name: ssl_protocol
+              Type: string
+            - Name: ssl_cipher
+              Type: string
+            - Name: edge_result_type
+              Type: string
+            - Name: content_type
+              Type: string
+            - Name: content_length
+              Type: int
+            - Name: edge_detailed_result_type
+              Type: string
+            - Name: country
+              Type: string
+            - Name: cache_behavior_path_pattern
+              Type: string
+          Compressed: false
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          Location: !Sub "s3://${S3Bucket}/processed/rtl/"
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            Parameters:
+              paths: bytes,client_ip,content_type,cookie,country,edge_detailed_result_type,edge_location,edge_request_id,edge_response_result_type,edge_result_type,host,host_header,ip_version,method,proto_version,protocol,referer,ssl_cipher,ssl_protocol,status,time_taken,timestamp,uri_query,uri_stem,user_agent
+            SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
+
+  KinesisFirehoseDeliveryStream:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: cf-rtl-logs-delivery-stream
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !GetAtt KinesisStreamCFRTL.Arn
+        RoleARN: !GetAtt RoleCFRTLFirehose.Arn
+      ExtendedS3DestinationConfiguration:
+        RoleARN: !GetAtt RoleCFRTLFirehose.Arn
+        BucketARN: !GetAtt S3Bucket.Arn
+        Prefix: "processed/rtl/year=!{partitionKeyFromLambda:year}/month=!{partitionKeyFromLambda:month}/day=!{partitionKeyFromLambda:day}/"
+        ErrorOutputPrefix: "errors/rtl/"
+        BufferingHints:
+          SizeInMBs: 128
+          IntervalInSeconds: 300
+        CompressionFormat: UNCOMPRESSED
+        EncryptionConfiguration:
+          NoEncryptionConfig: NoEncryption
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Ref LogGroupFirehose
+          LogStreamName: !Ref LogStreamFirehose
+        S3BackupMode: Enabled
+        S3BackupConfiguration:
+          RoleARN: !GetAtt RoleCFRTLFirehose.Arn
+          BucketARN: !GetAtt S3Bucket.Arn
+          Prefix: "backup/rtl/"
+          ErrorOutputPrefix: "errors/backup/rtl/"
+          BufferingHints:
+            SizeInMBs: 128
+            IntervalInSeconds: 300
+          CompressionFormat: GZIP
+          EncryptionConfiguration:
+            NoEncryptionConfig: NoEncryption
+          CloudWatchLoggingOptions:
+            Enabled: true
+            LogGroupName: !Ref LogGroupFirehose
+            LogStreamName: !Ref LogStreamFirehoseBackup
+        DynamicPartitioningConfiguration:
+          Enabled: true
+          RetryOptions:
+            DurationInSeconds: 300
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !GetAtt FunctionCFTRLKinesisProcessor.Arn
+                - ParameterName: NumberOfRetries
+                  ParameterValue: "3"
+                - ParameterName: RoleArn
+                  ParameterValue: !GetAtt RoleCFRTLFirehose.Arn
+                - ParameterName: BufferSizeInMBs
+                  ParameterValue: "3"
+                - ParameterName: BufferIntervalInSeconds
+                  ParameterValue: "60"
+              Type: Lambda
+        DataFormatConversionConfiguration:
+          SchemaConfiguration:
+            CatalogId: !Ref AWS::AccountId
+            RoleARN: !GetAtt RoleCFRTLFirehose.Arn
+            DatabaseName: !Ref GlueDatabaseCFRTL
+            TableName: !Ref GlueTableCFRTL
+            Region: !Ref AWS::Region
+            VersionId: LATEST
+          InputFormatConfiguration:
+            Deserializer:
+              OpenXJsonSerDe: {}
+          OutputFormatConfiguration:
+            Serializer:
+              OrcSerDe:
+                Compression: SNAPPY
+          Enabled: True
+
+  KinesisStreamCFRTL:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      StreamModeDetails:
+        StreamMode: "ON_DEMAND"
+      RetentionPeriodHours: 24
+      Tags:
+        - Key: Name
+          Value: "Cloudfront Real-Time Logs"
+
+  LogGroupFirehose:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 1
+
+  LogStreamFirehose:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref LogGroupFirehose
+
+  LogStreamFirehoseBackup:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref LogGroupFirehose
+
+  PolicyGlueGet:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: CFRTL-GlueGet
+      Roles:
+        - !Ref RoleCFRTLFirehose
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - glue:GetTable
+              - glue:GetTableVersion
+            Resource:
+              - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog
+              - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${GlueDatabaseCFRTL}
+              - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GlueDatabaseCFRTL}/${GlueTableCFRTL}
+
+  PolicyKinesisStreamWrite:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: CFRTL-KinesisStreamWrite
+      Roles:
+        - !Ref RoleCFRTLCloudfront
+        - !Ref RoleCFRTLFirehose
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - kinesis:DescribeStreamSummary
+              - kinesis:DescribeStream
+              - kinesis:PutRecord
+              - kinesis:PutRecords
+              - kinesis:ListStreams
+              - kinesis:GetShardIterator
+              - kinesis:GetRecords
+              - kinesis:ListShards
+            Resource: "*"
+
+  PolicyLambdaExecution:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: CFRTL-LambdaExecution
+      Roles:
+        - !Ref RoleCFRTLFirehose
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+              - lambda:GetFunctionConfiguration
+            Resource: !GetAtt FunctionCFTRLKinesisProcessor.Arn
+
+  PolicyLogs:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: CFRTL-Logs
+      Roles:
+        - !Ref RoleCFRTLCloudfront
+        - !Ref RoleCFRTLFirehose
+        - !Ref RoleCFRTLGlueCrawler
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              - logs:DescribeLogStreams
+            Resource: "*"
+
+  PolicyS3Access:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: CFRTL-S3Accesss
+      Roles:
+        - !Ref RoleCFRTLGlueCrawler
+        - !Ref RoleCFRTLFirehose
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:GetObjectMetadata
+              - s3:AbortMultipartUpload
+              - s3:GetBucketLocation
+              - s3:ListBucket
+              - s3:ListBucketMultipartUploads
+            Resource:
+              - !Sub "arn:aws:s3:::${S3Bucket}"
+              - !Sub "arn:aws:s3:::${S3Bucket}/*"
+
+  RoleCFRTLCloudfront:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+      Path: "/"
+      Policies:
+        - PolicyName: CFRTL-CF-Access
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kinesis:DescribeStreamSummary
+                  - kinesis:DescribeStream
+                  - kinesis:PutRecord
+                  - kinesis:PutRecords
+                Resource: !GetAtt KinesisStreamCFRTL.Arn
+
+  RoleCFRTLFirehose:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: ""
+            Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: "sts:AssumeRole"
+            Condition:
+              StringEquals:
+                "sts:ExternalId": !Ref "AWS::AccountId"
+      Path: "/"
+      Policies:
+        - PolicyName: CFRTL-FirehoseGlueAccess
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: "glue:GetTableVersions"
+                Resource: "*"
+              - Effect: Allow
+                Action: "kinesis:DescribeStream"
+                Resource: !GetAtt KinesisStreamCFRTL.Arn
+
+  RoleCFRTLGlueCrawler:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - glue.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+
+  RoleCFRTLLambaExec:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        - "arn:aws:iam::aws:policy/AmazonRekognitionReadOnlyAccess"
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      BucketName: !Ref ParamS3BucketName
+      VersioningConfiguration:
+        Status: Suspended
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
