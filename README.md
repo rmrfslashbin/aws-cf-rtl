@@ -37,5 +37,8 @@ This repo provides an AWS Cloudformation template to stand up a basic Cloudfront
 ## Next steps
 Once you have a full configuration deployed and functional, you can run the provided Glue Crawler to process the ORC formatted logs. Next, use Athena or Trino to query the Glue table.
 
+## Useful Queries
+This gist [Useful Trino Queries](https://gist.github.com/rmrfslashbin/b13a37be9aba9266943d42050ef6c74d) provides some useful Trino/Athena queries related to the data stored in the ORC files.
+
 ## Feedback
 Feedback, comments, pull requests, and questions are welcome.
