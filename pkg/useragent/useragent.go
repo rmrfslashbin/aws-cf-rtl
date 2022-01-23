@@ -37,10 +37,9 @@ func init() {
 }
 
 // ParseFile parses the given file.
-func Parse(line string) []Record {
-	records := []Record{}
+func Parse(line string) *Record {
 	client := parser.Parse(line)
-	records = append(records, Record{
+	return &Record{
 		Raw:            line,
 		UAFamily:       client.UserAgent.Family,
 		UAMajor:        client.UserAgent.Major,
@@ -54,7 +53,5 @@ func Parse(line string) []Record {
 		UADeviceFamily: client.Device.Family,
 		UADeviceBrand:  client.Device.Brand,
 		UADeviceModel:  client.Device.Model,
-	})
-
-	return records
+	}
 }
