@@ -13,3 +13,8 @@ deploy: build
 	aws --profile $(aws_profile) cloudformation package --template-file aws-cloudformation/template.yaml --s3-bucket $(deploy_bucket) --output-template-file build/out.yaml
 	aws --profile $(aws_profile) cloudformation deploy --template-file build/out.yaml --s3-bucket $(deploy_bucket) --stack-name $(stack_name) --capabilities CAPABILITY_NAMED_IAM
 
+update:
+	@echo "Updating..."
+	@go get -u ./...
+	@go mod tidy
+
