@@ -127,7 +127,7 @@ Resources:
         StorageDescriptor:
           Columns:
             - Name: timestamp
-              Type: int
+              Type: timestamp
             - Name: client_ip
               Type: string
             - Name: status

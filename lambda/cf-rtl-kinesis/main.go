@@ -109,17 +109,6 @@ func handler(ctx context.Context, kinesisFirehoseEvent events.KinesisFirehoseEve
 			continue
 		}
 
-		// Convert the Cloudfront timestamp to a time.Time
-		/*
-			ts, err := timestampToTime(data.Timestamp)
-			if err != nil {
-				log.WithFields(logrus.Fields{
-					"error": err,
-				}).Error("timestampToTime failed")
-				continue
-			}
-		*/
-
 		// Add partition keys to the response
 		partitionKeys := make(map[string]string)
 		timeMili := time.UnixMilli(data.Timestamp)
@@ -147,20 +136,6 @@ func init() {
 	log.SetLevel(logrus.InfoLevel)
 	log.SetFormatter(&logrus.JSONFormatter{})
 }
-
-/*
-// timestampToTime returns a time.Time object from a Cloudfront timestamp
-func timestampToTime(timestamp float64) (time.Time, error) {
-
-		timestamp = strings.Replace(timestamp, ".", "", 1)
-		timeInt, err := strconv.ParseInt(timestamp, 10, 64)
-		if err != nil {
-			return time.Time{}, err
-		}
-
-	return time.UnixMilli(timestamp), nil
-}
-*/
 
 // main is the entry point
 func main() {
