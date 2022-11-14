@@ -180,13 +180,37 @@ Resources:
               Type: string
             - Name: cache_behavior_path_pattern
               Type: string
+            - Name: user_agent_device_family
+              Type: string
+            - Name: user_agent_device_brand
+              Type: string
+            - Name: user_agent_device_model
+              Type: string
+            - Name: user_agent_os_family
+              Type: string
+            - Name: user_agent_os_major
+              Type: string
+            - Name: user_agent_os_minor
+              Type: string
+            - Name: user_agent_os_patch
+              Type: string
+            - Name: user_agent_os_patch_minor
+              Type: string
+            - Name: user_agent_family
+              Type: string
+            - Name: user_agent_major
+              Type: string
+            - Name: user_agent_minor
+              Type: string
+            - Name: user_agent_patch
+              Type: string
           Compressed: false
           InputFormat: org.apache.hadoop.mapred.TextInputFormat
           Location: !Sub "s3://${S3Bucket}/processed/rtl/"
           OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
           SerdeInfo:
             Parameters:
-              paths: bytes,client_ip,content_type,cookie,country,edge_detailed_result_type,edge_location,edge_request_id,edge_response_result_type,edge_result_type,host,host_header,ip_version,method,proto_version,protocol,referer,ssl_cipher,ssl_protocol,status,time_taken,timestamp,uri_query,uri_stem,user_agent
+              paths: bytes,client_ip,content_type,cookie,country,edge_detailed_result_type,edge_location,edge_request_id,edge_response_result_type,edge_result_type,host,host_header,ip_version,method,proto_version,protocol,referer,ssl_cipher,ssl_protocol,status,time_taken,timestamp,uri_query,uri_stem,user_agent,user_agent_device_family,user_agent_device_brand,user_agent_device_model,user_agent_os_family,user_agent_os_major,user_agent_os_minor,user_agent_os_patch,user_agent_os_patch_minor,user_agent_family,user_agent_major,user_agent_minor,user_agent_patch
             SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
 
   KinesisFirehoseDeliveryStream:
