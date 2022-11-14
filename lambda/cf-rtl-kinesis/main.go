@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/sirupsen/logrus"
+	"github.com/ua-parser/uap-go/uaparser"
 )
 
 var (
@@ -48,6 +49,18 @@ type Record struct {
 	EdgeDetailedResultType   string  `json:"edge_detailed_result_type"`
 	Country                  string  `json:"country"`
 	CacheBehaviorPathPattern string  `json:"cache_behavior_path_pattern"`
+	UserAgentDeviceFamily    string  `json:"user_agent_device_family"`
+	UserAgentDeviceBrand     string  `json:"user_agent_device_brand"`
+	UserAgentDeviceModel     string  `json:"user_agent_device_model"`
+	UserAgentOSFamily        string  `json:"user_agent_os_family"`
+	UserAgentOSMajor         string  `json:"user_agent_os_major"`
+	UserAgentOSMinor         string  `json:"user_agent_os_minor"`
+	UserAgentOSPatch         string  `json:"user_agent_os_patch"`
+	UserAgentOSPatchMinor    string  `json:"user_agent_os_patch_minor"`
+	UserAgentFamily          string  `json:"user_agent_family"`
+	UserAgentMajor           string  `json:"user_agent_major"`
+	UserAgentMinor           string  `json:"user_agent_minor"`
+	UserAgentPatch           string  `json:"user_agent_patch"`
 }
 
 /* Fields mapped from Cloudfront Real-Time Logs configuration.
@@ -192,5 +205,22 @@ func marshal(parts *[]string) (*Record, error) {
 	record.EdgeDetailedResultType = (*parts)[24]
 	record.Country = (*parts)[25]
 	record.CacheBehaviorPathPattern = (*parts)[26]
+
+	// Add user agent parsing data
+	parser := uaparser.NewFromSaved()
+	client := parser.Parse(record.UserAgent)
+	record.UserAgentDeviceFamily = client.Device.Family
+	record.UserAgentDeviceBrand = client.Device.Brand
+	record.UserAgentDeviceModel = client.Device.Model
+	record.UserAgentOSFamily = client.Os.Family
+	record.UserAgentOSMajor = client.Os.Major
+	record.UserAgentOSMinor = client.Os.Minor
+	record.UserAgentOSPatch = client.Os.Patch
+	record.UserAgentOSPatchMinor = client.Os.PatchMinor
+	record.UserAgentFamily = client.UserAgent.Family
+	record.UserAgentMajor = client.UserAgent.Major
+	record.UserAgentMinor = client.UserAgent.Minor
+	record.UserAgentPatch = client.UserAgent.Patch
+
 	return record, nil
 }
