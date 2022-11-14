@@ -1,11 +1,11 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: "Cloudfront Real-Time Log Processor"
+Description: "Cloudfront Real-Time Log Processor version 2.0"
 
 Parameters:
   ParamS3BucketName:
     Type: String
-    Default: is-cf-rtl-logs
+    Default: is-cf-rtl-logs-v2
     Description: S3 bucket name.
 
   ParamGlueDatabaseName:
@@ -127,7 +127,7 @@ Resources:
         StorageDescriptor:
           Columns:
             - Name: timestamp
-              Type: string
+              Type: int
             - Name: client_ip
               Type: string
             - Name: status
@@ -470,6 +470,7 @@ Resources:
 
   S3Bucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
     Properties:
       BucketEncryption:
         ServerSideEncryptionConfiguration:
