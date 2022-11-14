@@ -210,7 +210,7 @@ Resources:
           OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
           SerdeInfo:
             Parameters:
-              paths: bytes,client_ip,content_type,cookie,country,edge_detailed_result_type,edge_location,edge_request_id,edge_response_result_type,edge_result_type,host,host_header,ip_version,method,proto_version,protocol,referer,ssl_cipher,ssl_protocol,status,time_taken,timestamp,uri_query,uri_stem,user_agent
+              paths: bytes,client_ip,content_type,cookie,country,edge_detailed_result_type,edge_location,edge_request_id,edge_response_result_type,edge_result_type,host,host_header,ip_version,method,proto_version,protocol,referer,ssl_cipher,ssl_protocol,status,time_taken,timestamp,uri_query,uri_stem,user_agent,user_agent_device_family,user_agent_device_brand,user_agent_device_model,user_agent_os_family,user_agent_os_major,user_agent_os_minor,user_agent_os_patch,user_agent_os_patch_minor,user_agent_family,user_agent_major,user_agent_minor,user_agent_patch
             SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
 
   KinesisFirehoseDeliveryStream:
