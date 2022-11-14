@@ -21,7 +21,7 @@ var (
 
 // Record represents a single log entry
 type Record struct {
-	Timestamp                string  `json:"timestamp"`
+	Timestamp                int64   `json:"timestamp"`
 	ClientIP                 net.IP  `json:"client_ip"`
 	Status                   int     `json:"status"`
 	Bytes                    int64   `json:"bytes"`
@@ -110,19 +110,22 @@ func handler(ctx context.Context, kinesisFirehoseEvent events.KinesisFirehoseEve
 		}
 
 		// Convert the Cloudfront timestamp to a time.Time
-		ts, err := timestampToTime(data.Timestamp)
-		if err != nil {
-			log.WithFields(logrus.Fields{
-				"error": err,
-			}).Error("timestampToTime failed")
-			continue
-		}
+		/*
+			ts, err := timestampToTime(data.Timestamp)
+			if err != nil {
+				log.WithFields(logrus.Fields{
+					"error": err,
+				}).Error("timestampToTime failed")
+				continue
+			}
+		*/
 
 		// Add partition keys to the response
 		partitionKeys := make(map[string]string)
-		partitionKeys["year"] = fmt.Sprintf("%d", ts.Year())
-		partitionKeys["month"] = fmt.Sprintf("%d", ts.Month())
-		partitionKeys["day"] = fmt.Sprintf("%d", ts.Day())
+		timeMili := time.UnixMilli(data.Timestamp)
+		partitionKeys["year"] = fmt.Sprintf("%d", timeMili.Year())
+		partitionKeys["month"] = fmt.Sprintf("%d", timeMili.Month())
+		partitionKeys["day"] = fmt.Sprintf("%d", timeMili.Day())
 
 		// Create the response
 		output.Records = append(output.Records, events.KinesisFirehoseResponseRecord{
@@ -145,15 +148,19 @@ func init() {
 	log.SetFormatter(&logrus.JSONFormatter{})
 }
 
+/*
 // timestampToTime returns a time.Time object from a Cloudfront timestamp
-func timestampToTime(timestamp string) (time.Time, error) {
-	timestamp = strings.Replace(timestamp, ".", "", 1)
-	timeInt, err := strconv.ParseInt(timestamp, 10, 64)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return time.UnixMilli(timeInt), nil
+func timestampToTime(timestamp float64) (time.Time, error) {
+
+		timestamp = strings.Replace(timestamp, ".", "", 1)
+		timeInt, err := strconv.ParseInt(timestamp, 10, 64)
+		if err != nil {
+			return time.Time{}, err
+		}
+
+	return time.UnixMilli(timestamp), nil
 }
+*/
 
 // main is the entry point
 func main() {
@@ -174,7 +181,16 @@ func main() {
 // marshal the log fields into a Record
 func marshal(parts *[]string) (*Record, error) {
 	record := &Record{}
-	record.Timestamp = (*parts)[0]
+
+	if tstampfloat, err := strconv.ParseFloat((*parts)[0], 64); err == nil {
+		record.Timestamp = int64(tstampfloat * 1000)
+	} else {
+		logrus.WithFields(logrus.Fields{
+			"error":     err,
+			"timestamp": (*parts)[0],
+		}).Error("timestamp failed")
+	}
+
 	record.ClientIP = net.ParseIP((*parts)[1])
 	record.Status, _ = strconv.Atoi((*parts)[2])
 	record.Bytes, _ = strconv.ParseInt((*parts)[3], 10, 64)
